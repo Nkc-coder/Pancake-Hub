@@ -1,0 +1,561 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+
+local player = Players.LocalPlayer
+
+local DEFAULT_WALKSPEED = 16
+local DEFAULT_JUMPPOWER = 50
+local MAX_WALKSPEED = 100
+local MAX_JUMPPOWER = 200
+
+local humanoid = nil
+local rootPart = nil
+
+local speedHackEnabled = false
+local speedValue = DEFAULT_WALKSPEED
+local jumpHackEnabled = false
+local jumpPowerValue = DEFAULT_JUMPPOWER
+
+local aimbotEnabled = false
+local wallCheckEnabled = false
+local teamCheckEnabled = false
+
+local function onCharacterAdded(char)
+    humanoid = char:WaitForChild("Humanoid")
+    rootPart = char:WaitForChild("HumanoidRootPart")
+
+    humanoid.WalkSpeed = speedHackEnabled and speedValue or DEFAULT_WALKSPEED
+    humanoid.JumpPower = jumpHackEnabled and jumpPowerValue or DEFAULT_JUMPPOWER
+end
+
+player.CharacterAdded:Connect(onCharacterAdded)
+if player.Character then
+    onCharacterAdded(player.Character)
+end
+
+-- Utility for wall check
+local function hasWallBetween(origin, target)
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {player.Character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.IgnoreWater = true
+
+    local raycastResult = Workspace:Raycast(origin, (target - origin), raycastParams)
+    if raycastResult and raycastResult.Instance and raycastResult.Instance.CanCollide then
+        return true
+    end
+    return false
+end
+
+local function isEnemy(otherPlayer)
+    if not teamCheckEnabled then
+        return true
+    end
+    if player.Team and otherPlayer.Team and player.Team == otherPlayer.Team then
+        return false
+    end
+    return true
+end
+
+local function findAimbotTarget()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+
+    for _, targetPlayer in pairs(Players:GetPlayers()) do
+        if targetPlayer ~= player 
+           and targetPlayer.Character
+           and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+           and targetPlayer.Character:FindFirstChildOfClass("Humanoid") 
+           and targetPlayer.Character.Humanoid.Health > 0 then
+
+            if isEnemy(targetPlayer) then
+                local targetTorso = targetPlayer.Character:FindFirstChild("Torso") or targetPlayer.Character:FindFirstChild("UpperTorso") or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if targetTorso then
+                    local origin = Camera.CFrame.Position
+                    local targetPos = targetTorso.Position
+
+                    if not wallCheckEnabled or not hasWallBetween(origin, targetPos) then
+                        local dist = (origin - targetPos).Magnitude
+                        if dist < shortestDistance then
+                            shortestDistance = dist
+                            closestPlayer = targetPlayer
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+local function aimAtTarget(targetCharacter)
+    if not targetCharacter then return end
+    local torso = targetCharacter:FindFirstChild("Torso") or targetCharacter:FindFirstChild("UpperTorso") or targetCharacter:FindFirstChild("HumanoidRootPart")
+    if not torso then return end
+
+    local targetPos = torso.Position
+    local camPos = Camera.CFrame.Position
+    local desiredCFrame = CFrame.new(camPos, targetPos)
+
+    local aimSensitivity = 0.25
+    Camera.CFrame = Camera.CFrame:Lerp(desiredCFrame, aimSensitivity)
+end
+
+local function fireAtTarget(targetCharacter)
+    local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.Health > 0 then
+        -- Place for firing logic if applicable
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    if aimbotEnabled and humanoid and humanoid.Health > 0 and player.Character then
+        local target = findAimbotTarget()
+        if target and target.Character and target.Character:FindFirstChildOfClass("Humanoid") and target.Character.Humanoid.Health > 0 then
+            aimAtTarget(target.Character)
+            fireAtTarget(target.Character)
+        end
+    end
+end)
+
+-- Create ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "PancakeHubGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Main Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 400, 0, 300)
+mainFrame.Position = UDim2.new(0.5, -200, 0.5, -150)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+mainFrame.ClipsDescendants = true
+
+local titleBar = Instance.new("Frame")
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, 40)
+titleBar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local titleText = Instance.new("TextLabel")
+titleText.Name = "TitleText"
+titleText.Size = UDim2.new(1, -40, 1, 0)
+titleText.Position = UDim2.new(0, 10, 0, 0)
+titleText.BackgroundTransparency = 1
+titleText.Text = "Pancake Hub v1.1"
+titleText.TextColor3 = Color3.fromRGB(255, 165, 0)
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 18
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.Parent = titleBar
+
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Name = "MinimizeButton"
+minimizeButton.Size = UDim2.new(0, 40, 0, 30)
+minimizeButton.Position = UDim2.new(1, -45, 0, 5)
+minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
+minimizeButton.BorderSizePixel = 0
+minimizeButton.Text = "-"
+minimizeButton.Font = Enum.Font.GothamBold
+minimizeButton.TextSize = 28
+minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeButton.AutoButtonColor = false
+minimizeButton.Parent = titleBar
+
+local contentFrame = Instance.new("Frame")
+contentFrame.Name = "ContentFrame"
+contentFrame.Size = UDim2.new(1, 0, 1, -40)
+contentFrame.Position = UDim2.new(0, 0, 0, 40)
+contentFrame.BackgroundTransparency = 1
+contentFrame.Parent = mainFrame
+contentFrame.Visible = true -- Start expanded
+
+-- Left Panel with Main Hacks Button
+local leftPanel = Instance.new("Frame")
+leftPanel.Name = "LeftPanel"
+leftPanel.Size = UDim2.new(0, 130, 1, 0)
+leftPanel.Position = UDim2.new(0, 0, 0, 0)
+leftPanel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+leftPanel.BorderSizePixel = 0
+leftPanel.Parent = contentFrame
+
+local mainHacksButton = Instance.new("TextButton")
+mainHacksButton.Name = "MainHacksButton"
+mainHacksButton.Size = UDim2.new(1, -20, 0, 40)
+mainHacksButton.Position = UDim2.new(0, 10, 0, 10)
+mainHacksButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+mainHacksButton.BorderSizePixel = 0
+mainHacksButton.Text = "Main Hacks"
+mainHacksButton.TextColor3 = Color3.fromRGB(255, 165, 0)
+mainHacksButton.Font = Enum.Font.GothamBold
+mainHacksButton.TextSize = 16
+mainHacksButton.Parent = leftPanel
+
+-- Right Panel with scrolling
+local rightPanel = Instance.new("ScrollingFrame")
+rightPanel.Name = "RightPanel"
+rightPanel.Size = UDim2.new(1, -140, 1, 0)
+rightPanel.Position = UDim2.new(0, 140, 0, 0)
+rightPanel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+rightPanel.BorderSizePixel = 0
+rightPanel.CanvasSize = UDim2.new(0, 0, 1.5, 0)
+rightPanel.ScrollBarThickness = 6
+rightPanel.ScrollingDirection = Enum.ScrollingDirection.Y
+rightPanel.AutomaticCanvasSize = Enum.AutomaticSize.Y
+rightPanel.Visible = false -- Start hidden
+rightPanel.Parent = contentFrame
+
+-- Main hacks contents
+local function createSection(title, position)
+    local section = Instance.new("Frame")
+    section.Name = title.."Section"
+    section.Size = UDim2.new(1, -20, 0, 100)
+    section.Position = position
+    section.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    section.BorderSizePixel = 0
+    section.Parent = rightPanel
+    
+    local sectionCorner = Instance.new("UICorner")
+    sectionCorner.CornerRadius = UDim.new(0, 8)
+    sectionCorner.Parent = section
+    
+    local sectionTitle = Instance.new("TextLabel")
+    sectionTitle.Name = "Title"
+    sectionTitle.Size = UDim2.new(1, -20, 0, 30)
+    sectionTitle.Position = UDim2.new(0, 10, 0, 5)
+    sectionTitle.BackgroundTransparency = 1
+    sectionTitle.Text = title
+    sectionTitle.TextColor3 = Color3.fromRGB(255, 165, 0)
+    sectionTitle.Font = Enum.Font.GothamBold
+    sectionTitle.TextSize = 16
+    sectionTitle.TextXAlignment = Enum.TextXAlignment.Left
+    sectionTitle.Parent = section
+    
+    return section
+end
+
+local function createToggle(parent, text, position, callback)
+    local toggle = Instance.new("Frame")
+    toggle.Name = text.."Toggle"
+    toggle.Size = UDim2.new(0, 20, 0, 20)
+    toggle.Position = position
+    toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    toggle.BorderSizePixel = 0
+    toggle.Parent = parent
+    
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Name = "Button"
+    toggleButton.Size = UDim2.new(1, 0, 1, 0)
+    toggleButton.BackgroundTransparency = 1
+    toggleButton.Text = ""
+    toggleButton.Parent = toggle
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 4)
+    toggleCorner.Parent = toggle
+    
+    local toggleLabel = Instance.new("TextLabel")
+    toggleLabel.Name = "Label"
+    toggleLabel.Size = UDim2.new(0, 150, 1, 0)
+    toggleLabel.Position = UDim2.new(1, 10, 0, 0)
+    toggleLabel.BackgroundTransparency = 1
+    toggleLabel.Text = text
+    toggleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleLabel.Font = Enum.Font.Gotham
+    toggleLabel.TextSize = 14
+    toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    toggleLabel.Parent = toggle
+    
+    local state = false
+    
+    toggleButton.MouseButton1Click:Connect(function()
+        state = not state
+        toggle.BackgroundColor3 = state and Color3.fromRGB(255, 165, 0) or Color3.fromRGB(60, 60, 60)
+        if callback then
+            callback(state)
+        end
+    end)
+    
+    return toggle, toggleButton
+end
+
+local function createSlider(parent, text, min, max, default, position, callback)
+    local sliderFrame = Instance.new("Frame")
+    sliderFrame.Name = text.."Slider"
+    sliderFrame.Size = UDim2.new(1, -20, 0, 50)
+    sliderFrame.Position = position
+    sliderFrame.BackgroundTransparency = 1
+    sliderFrame.Parent = parent
+    
+    local sliderLabel = Instance.new("TextLabel")
+    sliderLabel.Name = "Label"
+    sliderLabel.Size = UDim2.new(1, 0, 0, 20)
+    sliderLabel.BackgroundTransparency = 1
+    sliderLabel.Text = text..": "..default
+    sliderLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    sliderLabel.Font = Enum.Font.Gotham
+    sliderLabel.TextSize = 14
+    sliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+    sliderLabel.Parent = sliderFrame
+    
+    local sliderBg = Instance.new("Frame")
+    sliderBg.Name = "Background"
+    sliderBg.Size = UDim2.new(1, 0, 0, 10)
+    sliderBg.Position = UDim2.new(0, 0, 0, 25)
+    sliderBg.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    sliderBg.BorderSizePixel = 0
+    sliderBg.Parent = sliderFrame
+    
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Name = "Fill"
+    sliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    sliderFill.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+    sliderFill.BorderSizePixel = 0
+    sliderFill.Parent = sliderBg
+    
+    local sliderCorner = Instance.new("UICorner")
+    sliderCorner.CornerRadius = UDim.new(0, 4)
+    sliderCorner.Parent = sliderBg
+    
+    local sliderFillCorner = Instance.new("UICorner")
+    sliderFillCorner.CornerRadius = UDim.new(0, 4)
+    sliderFillCorner.Parent = sliderFill
+    
+    local value = default
+    
+    sliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local relativeX = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+            value = math.floor(min + ((max - min) * relativeX))
+            sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            sliderLabel.Text = text..": "..value
+            if callback then
+                callback(value)
+            end
+        end
+    end)
+    
+    sliderBg.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                local relativeX = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+                value = math.floor(min + ((max - min) * relativeX))
+                sliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+                sliderLabel.Text = text..": "..value
+                if callback then
+                    callback(value)
+                end
+            end
+        end
+    end)
+    
+    return sliderFrame
+end
+
+-- Create sections for the right panel
+local speedSection = createSection("Speed & Jump Hacks", UDim2.new(0, 10, 0, 10))
+local aimbotSection = createSection("Aimbot", UDim2.new(0, 10, 0, 150))
+local teleportSection = createSection("Teleport", UDim2.new(0, 10, 0, 270))
+
+-- Teleport section functionality
+local teleportLocations = {
+    ["Spawn"] = Vector3.new(0, 100, 0),  -- Default example location
+    ["Center"] = Vector3.new(0, 100, 0), -- Replace with actual coordinates
+    ["Secret Room"] = Vector3.new(100, 100, 100) -- Replace with actual coordinates
+}
+
+local teleportDropdown = Instance.new("Frame")
+teleportDropdown.Name = "TeleportDropdown"
+teleportDropdown.Size = UDim2.new(0.8, 0, 0, 30)
+teleportDropdown.Position = UDim2.new(0.1, 0, 0, 40)
+teleportDropdown.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+teleportDropdown.BorderSizePixel = 0
+teleportDropdown.Parent = teleportSection
+
+local dropdownCorner = Instance.new("UICorner")
+dropdownCorner.CornerRadius = UDim.new(0, 4)
+dropdownCorner.Parent = teleportDropdown
+
+local dropdownText = Instance.new("TextLabel")
+dropdownText.Name = "DropdownText"
+dropdownText.Size = UDim2.new(1, -10, 1, 0)
+dropdownText.Position = UDim2.new(0, 10, 0, 0)
+dropdownText.BackgroundTransparency = 1
+dropdownText.Text = "Select Location"
+dropdownText.TextColor3 = Color3.fromRGB(255, 255, 255)
+dropdownText.Font = Enum.Font.Gotham
+dropdownText.TextSize = 14
+dropdownText.TextXAlignment = Enum.TextXAlignment.Left
+dropdownText.Parent = teleportDropdown
+
+local dropdownButton = Instance.new("TextButton")
+dropdownButton.Name = "DropdownButton"
+dropdownButton.Size = UDim2.new(1, 0, 1, 0)
+dropdownButton.BackgroundTransparency = 1
+dropdownButton.Text = ""
+dropdownButton.Parent = teleportDropdown
+
+local dropdownList = Instance.new("Frame")
+dropdownList.Name = "DropdownList"
+dropdownList.Size = UDim2.new(1, 0, 0, 0)
+dropdownList.Position = UDim2.new(0, 0, 1, 0)
+dropdownList.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+dropdownList.BorderSizePixel = 0
+dropdownList.Visible = false
+dropdownList.ClipsDescendants = true
+dropdownList.ZIndex = 5
+dropdownList.Parent = teleportDropdown
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Parent = dropdownList
+
+local selectedLocation = nil
+local isDropdownOpen = false
+
+for name, _ in pairs(teleportLocations) do
+    local option = Instance.new("TextButton")
+    option.Name = name
+    option.Size = UDim2.new(1, 0, 0, 30)
+    option.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    option.BorderSizePixel = 0
+    option.Text = name
+    option.TextColor3 = Color3.fromRGB(255, 255, 255)
+    option.Font = Enum.Font.Gotham
+    option.TextSize = 14
+    option.ZIndex = 6
+    option.Parent = dropdownList
+    
+    option.MouseButton1Click:Connect(function()
+        selectedLocation = name
+        dropdownText.Text = name
+        dropdownList.Visible = false
+        isDropdownOpen = false
+        dropdownList.Size = UDim2.new(1, 0, 0, 0)
+    end)
+end
+
+dropdownButton.MouseButton1Click:Connect(function()
+    isDropdownOpen = not isDropdownOpen
+    dropdownList.Visible = isDropdownOpen
+    
+    if isDropdownOpen then
+        dropdownList.Size = UDim2.new(1, 0, 0, 30 * #teleportLocations)
+    else
+        dropdownList.Size = UDim2.new(1, 0, 0, 0)
+    end
+end)
+
+local teleportButton = Instance.new("TextButton")
+teleportButton.Name = "TeleportButton"
+teleportButton.Size = UDim2.new(0.8, 0, 0, 30)
+teleportButton.Position = UDim2.new(0.1, 0, 0, 80)
+teleportButton.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+teleportButton.BorderSizePixel = 0
+teleportButton.Text = "Teleport"
+teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+teleportButton.Font = Enum.Font.GothamBold
+teleportButton.TextSize = 16
+teleportButton.Parent = teleportSection
+
+local teleportCorner = Instance.new("UICorner")
+teleportCorner.CornerRadius = UDim.new(0, 4)
+teleportCorner.Parent = teleportButton
+
+teleportButton.MouseButton1Click:Connect(function()
+    if selectedLocation and rootPart then
+        local targetPosition = teleportLocations[selectedLocation]
+        rootPart.CFrame = CFrame.new(targetPosition)
+    end
+end)
+
+-- Adjust teleport section height
+teleportSection.Size = UDim2.new(1, -20, 0, 120)
+
+-- Speed & Jump section
+local speedToggle, speedButton = createToggle(speedSection, "Speed Hack", UDim2.new(0, 10, 0, 40), function(state)
+    speedHackEnabled = state
+    if humanoid then
+        humanoid.WalkSpeed = state and speedValue or DEFAULT_WALKSPEED
+    end
+end)
+
+local speedSlider = createSlider(speedSection, "Speed", 16, MAX_WALKSPEED, speedValue, UDim2.new(0, 10, 0, 65), function(value)
+    speedValue = value
+    if speedHackEnabled and humanoid then
+        humanoid.WalkSpeed = value
+    end
+end)
+
+local jumpToggle, jumpButton = createToggle(speedSection, "Jump Hack", UDim2.new(0, 200, 0, 40), function(state)
+    jumpHackEnabled = state
+    if humanoid then
+        humanoid.JumpPower = state and jumpPowerValue or DEFAULT_JUMPPOWER
+    end
+end)
+
+local jumpSlider = createSlider(speedSection, "Jump Power", 50, MAX_JUMPPOWER, jumpPowerValue, UDim2.new(0, 200, 0, 65), function(value)
+    jumpPowerValue = value
+    if jumpHackEnabled and humanoid then
+        humanoid.JumpPower = value
+    end
+end)
+
+-- Adjust section height
+speedSection.Size = UDim2.new(1, -20, 0, 130)
+
+-- Aimbot section
+local aimbotToggle, aimbotButton = createToggle(aimbotSection, "Aimbot", UDim2.new(0, 10, 0, 40), function(state)
+    aimbotEnabled = state
+end)
+
+local wallCheckToggle, wallCheckButton = createToggle(aimbotSection, "Wall Check", UDim2.new(0, 10, 0, 70), function(state)
+    wallCheckEnabled = state
+end)
+
+local teamCheckToggle, teamCheckButton = createToggle(aimbotSection, "Team Check", UDim2.new(0, 200, 0, 40), function(state)
+    teamCheckEnabled = state
+end)
+
+-- Toggle right panel visibility on button click
+mainHacksButton.MouseButton1Click:Connect(function()
+    rightPanel.Visible = not rightPanel.Visible
+    if rightPanel.Visible then
+        mainHacksButton.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+    else
+        mainHacksButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    end
+end)
+
+-- Minimize button toggles entire content visibility
+local isContentVisible = true
+minimizeButton.MouseButton1Click:Connect(function()
+    isContentVisible = not isContentVisible
+    contentFrame.Visible = isContentVisible
+    minimizeButton.Text = isContentVisible and "-" or "+"
+end)
+
+-- Dragging support
+local dragging = false
+local dragInput, dragStart, startPos
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+titleBar.InputChanged:Connect(function(inpu
