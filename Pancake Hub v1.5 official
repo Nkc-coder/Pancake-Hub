@@ -1,0 +1,559 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+
+local player = Players.LocalPlayer
+
+local DEFAULT_WALKSPEED = 16
+local DEFAULT_JUMPPOWER = 50
+local MAX_WALKSPEED = 100
+local MAX_JUMPPOWER = 200
+
+local humanoid = nil
+local rootPart = nil
+
+local speedHackEnabled = false
+local speedValue = DEFAULT_WALKSPEED
+local jumpHackEnabled = false
+local jumpPowerValue = DEFAULT_JUMPPOWER
+
+local aimbotEnabled = false
+local wallCheckEnabled = false
+local teamCheckEnabled = false
+
+local function onCharacterAdded(char)
+    humanoid = char:WaitForChild("Humanoid")
+    rootPart = char:WaitForChild("HumanoidRootPart")
+
+    humanoid.WalkSpeed = speedHackEnabled and speedValue or DEFAULT_WALKSPEED
+    humanoid.JumpPower = jumpHackEnabled and jumpPowerValue or DEFAULT_JUMPPOWER
+end
+
+player.CharacterAdded:Connect(onCharacterAdded)
+if player.Character then
+    onCharacterAdded(player.Character)
+end
+
+local function hasWallBetween(origin, target)
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {player.Character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.IgnoreWater = true
+
+    local raycastResult = Workspace:Raycast(origin, (target - origin), raycastParams)
+    if raycastResult and raycastResult.Instance and raycastResult.Instance.CanCollide then
+        return true
+    end
+    return false
+end
+
+local function isEnemy(otherPlayer)
+    if not teamCheckEnabled then
+        return true
+    end
+    if player.Team and otherPlayer.Team and player.Team == otherPlayer.Team then
+        return false
+    end
+    return true
+end
+
+local function findAimbotTarget()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+
+    for _, targetPlayer in pairs(Players:GetPlayers()) do
+        if targetPlayer ~= player 
+           and targetPlayer.Character
+           and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+           and targetPlayer.Character:FindFirstChildOfClass("Humanoid") 
+           and targetPlayer.Character.Humanoid.Health > 0 then
+
+            if isEnemy(targetPlayer) then
+                local targetTorso = targetPlayer.Character:FindFirstChild("Torso") or targetPlayer.Character:FindFirstChild("UpperTorso") or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if targetTorso then
+                    local origin = Camera.CFrame.Position
+                    local targetPos = targetTorso.Position
+
+                    if not wallCheckEnabled or not hasWallBetween(origin, targetPos) then
+                        local dist = (origin - targetPos).Magnitude
+                        if dist < shortestDistance then
+                            shortestDistance = dist
+                            closestPlayer = targetPlayer
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+local function aimAtTarget(targetCharacter)
+    if not targetCharacter then return end
+    local torso = targetCharacter:FindFirstChild("Torso") or targetCharacter:FindFirstChild("UpperTorso") or targetCharacter:FindFirstChild("HumanoidRootPart")
+    if not torso then return end
+
+    local targetPos = torso.Position
+    local camPos = Camera.CFrame.Position
+    local desiredCFrame = CFrame.new(camPos, targetPos)
+
+    local aimSensitivity = 0.25
+    Camera.CFrame = Camera.CFrame:Lerp(desiredCFrame, aimSensitivity)
+end
+
+local function fireAtTarget(targetCharacter)
+    local humanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.Health > 0 then
+        -- Place for firing logic if applicable
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    if aimbotEnabled and humanoid and humanoid.Health > 0 and player.Character then
+        local target = findAimbotTarget()
+        if target and target.Character and target.Character:FindFirstChildOfClass("Humanoid") and target.Character.Humanoid.Health > 0 then
+            aimAtTarget(target.Character)
+            fireAtTarget(target.Character)
+        end
+    end
+end)
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "PancakeHubGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 500, 0, 300)
+mainFrame.Position = UDim2.new(0.5, -250, 0.5, -150)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+mainFrame.ClipsDescendants = true
+
+local titleBar = Instance.new("Frame")
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, 40)
+titleBar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local titleText = Instance.new("TextLabel")
+titleText.Name = "TitleText"
+titleText.Size = UDim2.new(1, -40, 1, 0)
+titleText.Position = UDim2.new(0, 10, 0, 0)
+titleText.BackgroundTransparency = 1
+titleText.Text = "Pancake Hub v1.5" -- Updated version number
+titleText.TextColor3 = Color3.fromRGB(255, 165, 0)
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 18
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.Parent = titleBar
+
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Name = "MinimizeButton"
+minimizeButton.Size = UDim2.new(0, 40, 0, 30)
+minimizeButton.Position = UDim2.new(1, -45, 0, 5)
+minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
+minimizeButton.BorderSizePixel = 0
+minimizeButton.Text = "-"
+minimizeButton.Font = Enum.Font.GothamBold
+minimizeButton.TextSize = 28
+minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeButton.AutoButtonColor = false
+minimizeButton.Parent = titleBar
+
+-- Make the GUI draggable
+local dragging = false
+local dragInput = nil
+local dragStart = nil
+local startPos = nil
+
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+    mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+titleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        updateDrag(input)
+    end
+end)
+
+local contentFrame = Instance.new("Frame")
+contentFrame.Name = "ContentFrame"
+contentFrame.Size = UDim2.new(1, 0, 1, -40)
+contentFrame.Position = UDim2.new(0, 0, 0, 40)
+contentFrame.BackgroundTransparency = 1
+contentFrame.Parent = mainFrame
+contentFrame.Visible = true
+
+local leftPanel = Instance.new("Frame")
+leftPanel.Name = "LeftPanel"
+leftPanel.Size = UDim2.new(0, 130, 1, 0)
+leftPanel.Position = UDim2.new(0, 0, 0, 0)
+leftPanel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+leftPanel.BorderSizePixel = 0
+leftPanel.Parent = contentFrame
+
+local mainHacksButton = Instance.new("TextButton")
+mainHacksButton.Name = "MainHacksButton"
+mainHacksButton.Size = UDim2.new(1, -20, 0, 40)
+mainHacksButton.Position = UDim2.new(0, 10, 0, 10)
+mainHacksButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+mainHacksButton.BorderSizePixel = 0
+mainHacksButton.Text = "Main Hacks"
+mainHacksButton.TextColor3 = Color3.fromRGB(255, 165, 0)
+mainHacksButton.Font = Enum.Font.GothamBold
+mainHacksButton.TextSize = 16
+mainHacksButton.Parent = leftPanel
+
+local rightPanel = Instance.new("ScrollingFrame")
+rightPanel.Name = "RightPanel"
+rightPanel.Size = UDim2.new(1, -140, 1, 0)
+rightPanel.Position = UDim2.new(0, 140, 0, 0)
+rightPanel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+rightPanel.BorderSizePixel = 0
+rightPanel.CanvasSize = UDim2.new(0, 0, 1.5, 0)
+rightPanel.ScrollBarThickness = 6
+rightPanel.ScrollingDirection = Enum.ScrollingDirection.Y
+rightPanel.AutomaticCanvasSize = Enum.AutomaticSize.Y
+rightPanel.Visible = false
+rightPanel.Parent = contentFrame
+
+-- Connect the Main Hacks button to show the right panel
+mainHacksButton.MouseButton1Click:Connect(function()
+    rightPanel.Visible = true
+    mainHacksButton.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+    mainHacksButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+end)
+
+local function createSection(title, position)
+    local section = Instance.new("Frame")
+    section.Name = title.."Section"
+    section.Size = UDim2.new(1, -20, 0, 150)
+    section.Position = position
+    section.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    section.BorderSizePixel = 0
+    section.Parent = rightPanel
+
+    local sectionCorner = Instance.new("UICorner")
+    sectionCorner.CornerRadius = UDim.new(0, 8)
+    sectionCorner.Parent = section
+
+    local sectionTitle = Instance.new("TextLabel")
+    sectionTitle.Name = "Title"
+    sectionTitle.Size = UDim2.new(1, -20, 0, 30)
+    sectionTitle.Position = UDim2.new(0, 10, 0, 5)
+    sectionTitle.BackgroundTransparency = 1
+    sectionTitle.Text = title
+    sectionTitle.TextColor3 = Color3.fromRGB(255, 165, 0)
+    sectionTitle.Font = Enum.Font.GothamBold
+    sectionTitle.TextSize = 16
+    sectionTitle.TextXAlignment = Enum.TextXAlignment.Left
+    sectionTitle.Parent = section
+
+    return section
+end
+
+local function createToggle(parent, text, position, callback)
+    local toggle = Instance.new("Frame")
+    toggle.Name = text.."Toggle"
+    toggle.Size = UDim2.new(0, 20, 0, 20)
+    toggle.Position = position
+    toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    toggle.BorderSizePixel = 0
+    toggle.Parent = parent
+
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Name = "Button"
+    toggleButton.Size = UDim2.new(1, 0, 1, 0)
+    toggleButton.BackgroundTransparency = 1
+    toggleButton.Text = ""
+    toggleButton.Parent = toggle
+
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 4)
+    toggleCorner.Parent = toggle
+
+    local toggleLabel = Instance.new("TextLabel")
+    toggleLabel.Name = "Label"
+    toggleLabel.Size = UDim2.new(0, 150, 1, 0)
+    toggleLabel.Position = UDim2.new(1, 10, 0, 0)
+    toggleLabel.BackgroundTransparency = 1
+    toggleLabel.Text = text
+    toggleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleLabel.Font = Enum.Font.Gotham
+    toggleLabel.TextSize = 14
+    toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    toggleLabel.Parent = toggle
+
+    local state = false
+
+    toggleButton.MouseButton1Click:Connect(function()
+        state = not state
+        toggle.BackgroundColor3 = state and Color3.fromRGB(255, 165, 0) or Color3.fromRGB(60, 60, 60)
+        if callback then
+            callback(state)
+        end
+    end)
+
+    return toggle, toggleButton
+end
+
+-- Updated slider function with improved slider knob
+local function createSlider(parent, text, min, max, default, position, callback)
+    local sliderFrame = Instance.new("Frame")
+    sliderFrame.Name = text.."Slider"
+    sliderFrame.Size = UDim2.new(1, -20, 0, 50)
+    sliderFrame.Position = position
+    sliderFrame.BackgroundTransparency = 1
+    sliderFrame.Parent = parent
+
+    local sliderLabel = Instance.new("TextLabel")
+    sliderLabel.Name = "Label"
+    sliderLabel.Size = UDim2.new(1, 0, 0, 20)
+    sliderLabel.BackgroundTransparency = 1
+    sliderLabel.Text = text..": "..default
+    sliderLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    sliderLabel.Font = Enum.Font.Gotham
+    sliderLabel.TextSize = 14
+    sliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+    sliderLabel.Parent = sliderFrame
+
+    local sliderBg = Instance.new("Frame")
+    sliderBg.Name = "Background"
+    sliderBg.Size = UDim2.new(1, 0, 0, 10)
+    sliderBg.Position = UDim2.new(0, 0, 0, 25)
+    sliderBg.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    sliderBg.BorderSizePixel = 0
+    sliderBg.Parent = sliderFrame
+
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Name = "Fill"
+    sliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    sliderFill.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+    sliderFill.BorderSizePixel = 0
+    sliderFill.Parent = sliderBg
+
+    local sliderCorner = Instance.new("UICorner")
+    sliderCorner.CornerRadius = UDim.new(0, 4)
+    sliderCorner.Parent = sliderBg
+
+    local sliderFillCorner = Instance.new("UICorner")
+    sliderFillCorner.CornerRadius = UDim.new(0, 4)
+    sliderFillCorner.Parent = sliderFill
+    
+    -- Add slider knob
+    local sliderKnob = Instance.new("Frame")
+    sliderKnob.Name = "Knob"
+    sliderKnob.Size = UDim2.new(0, 16, 0, 16)
+    sliderKnob.Position = UDim2.new((default - min) / (max - min), -8, 0.5, -8)
+    sliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    sliderKnob.BorderSizePixel = 0
+    sliderKnob.ZIndex = 2
+    sliderKnob.Parent = sliderBg
+    
+    local sliderKnobCorner = Instance.new("UICorner")
+    sliderKnobCorner.CornerRadius = UDim.new(1, 0)
+    sliderKnobCorner.Parent = sliderKnob
+
+    -- Add decrease button
+    local decreaseButton = Instance.new("TextButton")
+    decreaseButton.Name = "DecreaseButton"
+    decreaseButton.Size = UDim2.new(0, 20, 0, 20)
+    decreaseButton.Position = UDim2.new(0, -25, 0, 20)
+    decreaseButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    decreaseButton.BorderSizePixel = 0
+    decreaseButton.Text = "-"
+    decreaseButton.Font = Enum.Font.GothamBold
+    decreaseButton.TextSize = 18
+    decreaseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    decreaseButton.Parent = sliderFrame
+    
+    local decreaseCorner = Instance.new("UICorner")
+    decreaseCorner.CornerRadius = UDim.new(0, 4)
+    decreaseCorner.Parent = decreaseButton
+    
+    -- Add increase button
+    local increaseButton = Instance.new("TextButton")
+    increaseButton.Name = "IncreaseButton"
+    increaseButton.Size = UDim2.new(0, 20, 0, 20)
+    increaseButton.Position = UDim2.new(1, 5, 0, 20)
+    increaseButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    increaseButton.BorderSizePixel = 0
+    increaseButton.Text = "+"
+    increaseButton.Font = Enum.Font.GothamBold
+    increaseButton.TextSize = 18
+    increaseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    increaseButton.Parent = sliderFrame
+    
+    local increaseCorner = Instance.new("UICorner")
+    increaseCorner.CornerRadius = UDim.new(0, 4)
+    increaseCorner.Parent = increaseButton
+
+    local dragging = false
+    local currentValue = default
+
+    local function updateSlider(newValue)
+        local clampedValue = math.clamp(newValue, min, max)
+        currentValue = clampedValue
+        local relative = (clampedValue - min) / (max - min)
+        sliderFill.Size = UDim2.new(relative, 0, 1, 0)
+        sliderKnob.Position = UDim2.new(relative, -8, 0.5, -8)
+        sliderLabel.Text = text .. ": " .. math.floor(clampedValue)
+        if callback then
+            callback(clampedValue)
+        end
+        return clampedValue
+    end
+
+    local function getValueFromPosition(posX)
+        local relativeX = math.clamp((posX - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+        return min + ((max - min) * relativeX)
+    end
+
+    sliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            local value = getValueFromPosition(input.Position.X)
+            updateSlider(value)
+        end
+    end)
+
+    sliderBg.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local value = getValueFromPosition(input.Position.X)
+            updateSlider(value)
+        end
+    end)
+
+    sliderBg.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    sliderKnob.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            local value = getValueFromPosition(input.Position.X)
+            updateSlider(value)
+        end
+    end)
+
+    decreaseButton.MouseButton1Click:Connect(function()
+        updateSlider(currentValue - 1)
+    end)
+
+    increaseButton.MouseButton1Click:Connect(function()
+        updateSlider(currentValue + 1)
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    return sliderFrame, sliderFill, sliderLabel, updateSlider
+end
+
+local speedSection = createSection("Speed & Jump Hacks", UDim2.new(0, 10, 0, 10))
+local aimbotSection = createSection("Aimbot", UDim2.new(0, 10, 0, 180))
+local teleportSection = createSection("Teleport", UDim2.new(0, 10, 0, 350))
+teleportSection.Size = UDim2.new(1, -20, 0, 150)
+
+local speedToggle, speedButton = createToggle(speedSection, "Speed Hack", UDim2.new(0, 10, 0, 40), function(state)
+    speedHackEnabled = state
+    if humanoid then
+        humanoid.WalkSpeed = state and speedValue or DEFAULT_WALKSPEED
+    end
+end)
+
+local speedSlider, speedSliderFill, speedSliderLabel, speedUpdateSlider =
+    createSlider(speedSection, "Speed", 16, MAX_WALKSPEED, speedValue, UDim2.new(0, 10, 0, 65), function(value)
+        speedValue = value
+        if speedHackEnabled and humanoid then
+            humanoid.WalkSpeed = value
+        end
+    end)
+
+local jumpToggle, jumpButton = createToggle(speedSection, "Jump Hack", UDim2.new(0, 10, 0, 100), function(state)
+    jumpHackEnabled = state
+    if humanoid then
+        humanoid.JumpPower = state and jumpPowerValue or DEFAULT_JUMPPOWER
+    end
+end)
+
+local jumpSlider, jumpSliderFill, jumpSliderLabel, jumpUpdateSlider =
+    createSlider(speedSection, "Jump Power", 50, MAX_JUMPPOWER, jumpPowerValue, UDim2.new(0, 10, 0, 125), function(value)
+        jumpPowerValue = value
+        if jumpHackEnabled and humanoid then
+            humanoid.JumpPower = value
+        end
+    end)
+
+local aimbotToggle, aimbotButton = createToggle(aimbotSection, "Aimbot", UDim2.new(0, 10, 0, 40), function(state)
+    aimbotEnabled = state
+end)
+
+local wallCheckToggle, wallCheckButton = createToggle(aimbotSection, "Wall Check", UDim2.new(0, 10, 0, 70), function(state)
+    wallCheckEnabled = state
+end)
+
+local teamCheckToggle, teamCheckButton = createToggle(aimbotSection, "Team Check", UDim2.new(0, 200, 0, 40), function(state)
+    teamCheckEnabled = state
+end)
+
+local teleportLabel = Instance.new("TextLabel")
+teleportLabel.Name = "TeleportLabel"
+teleportLabel.Size = UDim2.new(1, -20, 0, 25)
+teleportLabel.Position = UDim2.new(0, 10, 0, 10)
+teleportLabel.BackgroundTransparency = 1
+teleportLabel.Text = "Enter Player Username or Display Name:"
+teleportLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+teleportLabel.Font = Enum.Font.Gotham
+teleportLabel.TextSize = 14
+teleportLabel.TextXAlignment = Enum.TextXAlignment.Left
+teleportLabel.Parent = teleportSection
+
+local teleportTextbox = Instance.new("TextBox")
+teleportTextbox.Name = "TeleportTextbox"
+teleportTextbox.Size = UDim2.new(1, -20, 0, 30)
+teleportTextbox.Position = UDim2.new(0, 10, 0, 40)
+teleportTextbox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+teleportTextbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+teleportTextbox.Font = Enum.Font.Gotham
+teleportTextbox.TextSize = 16
+teleportTextbox.ClearTextOnFocus = false
+teleportTextbox.PlaceholderText = "Player Name"
+teleportTextbox.Parent = teleportSection
+
+local teleportButton = Instance.new("TextButton")
+teleportButton.Name = "TeleportButton"
+teleportButton.Size = 
